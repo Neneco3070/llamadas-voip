@@ -25,7 +25,7 @@
       }
 
       try {
-        // 1. Solicita el token dinámico a Vercel en milisegundos
+        // 1. Obtener token automático desde Vercel
         document.getElementById("estado").innerText = "Conectando al servidor...";
         const resp = await fetch(`${urlGenerador}?canal=${canal}`);
         const data = await resp.json();
@@ -34,19 +34,19 @@
           throw new Error("No se pudo obtener el token de llamada");
         }
 
-        // 2. Conecta la llamada con el token automático
+        // 2. Conectar al canal con el token generado
         await client.join(appId, canal, data.token, null);
         document.getElementById("estado").innerText = "Conectado al canal: " + canal;
 
-        // 3. Activa micrófono con volumen y cancelación de eco
+        // 3. Captura con ganancia automática alta y cancelación de ruido
         localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({
-          AEC: true,
-          AGC: true,
-          ANS: true
+          AEC: true, // Cancelación de eco
+          AGC: true, // Control automático de ganancia (aumenta micrófono)
+          ANS: true  // Supresión de ruido
         });
         await client.publish([localAudioTrack]);
 
-        // 4. Recibe y reproduce el audio del otro usuario
+        // 4. Reproducción entrante fijada al 100% de volumen
         client.on("user-published", async (user, mediaType) => {
           await client.subscribe(user, mediaType);
           if (mediaType === "audio") {
