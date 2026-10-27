@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Llamada VoIP</title>
+  <!-- SDK Web Oficial de Agora -->
+  <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.0.js"></script>
+</head>
+<body style="background:#000; color:#fff; font-family:sans-serif; text-align:center; padding:10px;">
+  <p id="estado">Iniciando audio...</p>
+
+  <script>
+    // Obtener los parámetros de la URL: ?canal=12345
+    const params = new URLSearchParams(window.location.search);
+    const appId = "6c874484d2564f92b84892806de6a258"; // Tu App ID de Agora
+    const canal = params.get("canal");
+
+    const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+    let localAudioTrack;
+
+    async function conectarLlamada() {
+      if (!canal) {
+        document.getElementById("estado").innerText = "Falta el número de canal";
+        return;
+      }
+
+      try {
+        // 1. Unirse al canal (sin token, pasamos null)
+        await client.join(appId, canal, null, null);
+        document.getElementById("estado").innerText = "Conectado al canal: " + canal;
+
+        // 2. Crear pista de audio y abrir micrófono
+        localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+        await client.publish([localAudioTrack]);
+
+        // 3. Reproducir audio cuando la otra persona hable
+        client.on("user-published", async (user, mediaType) => {
+          await client.subscribe(user, mediaType);
+          if (mediaType === "audio") {
+            user.audioTrack.play();
+            document.getElementById("estado").innerText = "En llamada activa";
+          }
+        });
+
+        // 4. Detectar si el otro cuelga
+        client.on("user-unpublished", (user, mediaType) => {
+          if (mediaType === "audio") {
+            document.getElementById("estado").innerText = "La otra persona colgó";
+          }
+        });
+      } catch (error) {
+        document.getElementById("estado").innerText = "Error: " + error.message;
+      }
+    }
+
+    // Iniciar automáticamente al cargar
+    conectarLlamada();
+  </script>
+</body>
+</html>
