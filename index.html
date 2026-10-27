@@ -11,7 +11,7 @@
 
   <script>
     const params = new URLSearchParams(window.location.search);
-    const appId = "81df5645a3e8486481ddd64dac89f2fe"; // Tu App ID
+    const appId = "81df5645a3e8486481ddd64dac89f2fe"; // Reemplaza con tu App ID real
     const canal = params.get("canal");
     const token = params.get("token") || null;
 
@@ -28,13 +28,20 @@
         await client.join(appId, canal, token, null);
         document.getElementById("estado").innerText = "Conectado al canal: " + canal;
 
-        localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+        // Captura de micrófono con ganancia automática y reducción de ruido
+        localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({
+          AEC: true, // Cancelación de eco acústico
+          AGC: true, // Control automático de ganancia (aumenta micrófonos bajos)
+          ANS: true  // Supresión de ruido ambiental
+        });
         await client.publish([localAudioTrack]);
 
         client.on("user-published", async (user, mediaType) => {
           await client.subscribe(user, mediaType);
           if (mediaType === "audio") {
+            // Reproducir y fijar el volumen al máximo
             user.audioTrack.play();
+            user.audioTrack.setVolume(100);
             document.getElementById("estado").innerText = "¡En llamada activa!";
           }
         });
