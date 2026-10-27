@@ -6,14 +6,14 @@
   <title>Llamada VoIP</title>
   <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.0.js"></script>
 </head>
-<body style="background:#000; color:#fff; font-family:sans-serif; text-align:center; padding:10px;">
-  <p id="estado">Iniciando audio...</p>
+<body style="background:#000; color:#fff; font-family:sans-serif; text-align:center; padding:15px;">
+  <p id="estado">Obteniendo credenciales...</p>
 
   <script>
     const params = new URLSearchParams(window.location.search);
-    const appId = "81df5645a3e8486481ddd64dac89f2fe"; // Reemplaza con tu App ID real
     const canal = params.get("canal");
-    const token = params.get("token") || null;
+    const appId = "81df5645a3e8486481ddd64dac89f2fe"; // Tu App ID
+    const urlGenerador = "https://llamadas-voip.vercel.app/api/token";
 
     const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
     let localAudioTrack;
@@ -25,21 +25,31 @@
       }
 
       try {
-        await client.join(appId, canal, token, null);
+        // 1. Solicita el token dinámico a Vercel en milisegundos
+        document.getElementById("estado").innerText = "Conectando al servidor...";
+        const resp = await fetch(`${urlGenerador}?canal=${canal}`);
+        const data = await resp.json();
+
+        if (!data.token) {
+          throw new Error("No se pudo obtener el token de llamada");
+        }
+
+        // 2. Conecta la llamada con el token automático
+        await client.join(appId, canal, data.token, null);
         document.getElementById("estado").innerText = "Conectado al canal: " + canal;
 
-        // Captura de micrófono con ganancia automática y reducción de ruido
+        // 3. Activa micrófono con volumen y cancelación de eco
         localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({
-          AEC: true, // Cancelación de eco acústico
-          AGC: true, // Control automático de ganancia (aumenta micrófonos bajos)
-          ANS: true  // Supresión de ruido ambiental
+          AEC: true,
+          AGC: true,
+          ANS: true
         });
         await client.publish([localAudioTrack]);
 
+        // 4. Recibe y reproduce el audio del otro usuario
         client.on("user-published", async (user, mediaType) => {
           await client.subscribe(user, mediaType);
           if (mediaType === "audio") {
-            // Reproducir y fijar el volumen al máximo
             user.audioTrack.play();
             user.audioTrack.setVolume(100);
             document.getElementById("estado").innerText = "¡En llamada activa!";
