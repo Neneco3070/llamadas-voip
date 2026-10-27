@@ -1,0 +1,7 @@
+{
+  "name": "generador-tokens-agora",
+  "version": "1.0.0",
+  "dependencies": {
+    "agora-access-token": "^2.0.4"
+  }
+}
