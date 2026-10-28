@@ -9,6 +9,9 @@ module.exports = (req, res) => {
   }
 
   const canal = req.query.canal;
+  // Recibir el UID de la URL (si no viene, asignar 0)
+  const uid = req.query.uid ? parseInt(req.query.uid) : 0;
+
   if (!canal) {
     return res.status(400).json({ error: 'Falta el parametro canal' });
   }
@@ -25,11 +28,11 @@ module.exports = (req, res) => {
       appId,
       appCertificate,
       canal,
-      0,
+      uid,
       role,
       privilegeExpiredTs
     );
-    return res.status(200).json({ token: token, canal: canal });
+    return res.status(200).json({ token: token, canal: canal, uid: uid });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
