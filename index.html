@@ -141,13 +141,12 @@
 
     const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
     let microfonoLocal = null;
-    let audioRemoto = null;
 
+    // 1. Escuchar usuarios remotos y suscribir audio de inmediato
     client.on("user-published", async (user, mediaType) => {
       await client.subscribe(user, mediaType);
       if (mediaType === "audio") {
-        audioRemoto = user.audioTrack;
-        reproducirRemoto();
+        reproducirPista(user.audioTrack);
       }
     });
 
@@ -155,11 +154,15 @@
       document.getElementById("estado").innerText = t.finalizada;
     });
 
-    function reproducirRemoto() {
-      if (audioRemoto) {
-        audioRemoto.play();
-        audioRemoto.setVolume(100);
-        document.getElementById("estado").innerText = t.conectado;
+    function reproducirPista(track) {
+      if (track) {
+        try {
+          track.play();
+          track.setVolume(100);
+          document.getElementById("estado").innerText = t.conectado;
+        } catch (e) {
+          console.warn("Autoplay bloqueado por el navegador:", e);
+        }
       }
     }
 
@@ -169,47 +172,67 @@
         const resp = await fetch(`${urlGenerador}?canal=${canal}&uid=${miUid}`);
         const data = await resp.json();
 
+        // Unirse al canal
         await client.join(appId, canal, data.token, miUid);
 
+        // Crear micrófono con parámetros de voz optimizados
         microfonoLocal = await AgoraRTC.createMicrophoneAudioTrack({
           AEC: true,
           AGC: true,
           ANS: true
         });
 
+        // Publicar la pista local
         await client.publish([microfonoLocal]);
         document.getElementById("estado").innerText = t.conectado;
+
+        // Si ya hay usuarios conectados antes de entrar, suscribirse a ellos
+        client.remoteUsers.forEach(async (user) => {
+          if (user.hasAudio) {
+            await client.subscribe(user, "audio");
+            reproducirPista(user.audioTrack);
+          }
+        });
+
       } catch (err) {
         document.getElementById("estado").innerText = "Error: " + err.message;
       }
     }
 
     function activarTodo() {
+      // 1. Desbloquear contexto de audio de Chrome
       AgoraRTC.resumeAudio();
+
+      // 2. Asegurar transmisión del micrófono propio
       if (microfonoLocal) {
         microfonoLocal.setEnabled(true);
       }
-      reproducirRemoto();
+
+      // 3. Forzar reproducción de todas las pistas remotas activas
+      client.remoteUsers.forEach((user) => {
+        if (user.audioTrack) {
+          user.audioTrack.play();
+          user.audioTrack.setVolume(100);
+        }
+      });
+
+      document.getElementById("estado").innerText = t.conectado;
     }
 
     async function colgarYLuegoCerrar() {
       document.getElementById("estado").innerText = t.finalizada;
 
-      // 1. Silenciar y destruir micrófono local
       if (microfonoLocal) {
         microfonoLocal.stop();
         microfonoLocal.close();
       }
 
-      // 2. Desconectar de la llamada Agora
       await client.leave();
 
-      // 3. Intentar cerrar ventana / volver atrás
       window.close();
       if (window.history.length > 1) {
         window.history.back();
       } else {
-        // Redirige a página en blanco limpia si el navegador bloquea el cierre directo
         window.location.href = "about:blank";
       }
     }
