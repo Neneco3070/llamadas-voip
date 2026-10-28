@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Llamada en Curso</title>
+  <title>Llamada VoIP</title>
   <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.0.js"></script>
   <style>
     body {
@@ -14,40 +14,57 @@
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      height: 90vh;
+      min-height: 90vh;
       margin: 0;
       text-align: center;
     }
     .card {
       background: #1e1f29;
-      padding: 30px;
+      padding: 24px;
       border-radius: 16px;
+      width: 85%;
+      max-width: 340px;
       box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-      width: 80%;
-      max-width: 320px;
     }
-    #btn-desbloqueo {
+    #btn-accion {
       background: #00c853;
       color: #fff;
       border: none;
-      padding: 16px 24px;
+      padding: 16px;
       font-size: 16px;
       font-weight: bold;
       border-radius: 30px;
-      margin-top: 20px;
-      cursor: pointer;
+      margin-top: 15px;
       width: 100%;
+      cursor: pointer;
     }
-    #estado { font-size: 17px; margin-bottom: 10px; }
+    #log {
+      font-size: 13px;
+      color: #aaa;
+      margin-top: 15px;
+      text-align: left;
+      background: #12131a;
+      padding: 10px;
+      border-radius: 8px;
+      max-height: 120px;
+      overflow-y: auto;
+    }
   </style>
 </head>
 <body>
   <div class="card">
-    <h3 id="estado">Iniciando audio...</h3>
-    <button id="btn-desbloqueo" onclick="desbloquearSonido()">🔊 TOCAR PARA ACTIVAR VOZ</button>
+    <h3 id="titulo">Conectando...</h3>
+    <button id="btn-accion" onclick="activarTodo()">🔊 ACTIVAR VOZ / REANUDAR</button>
+    <div id="log">Iniciando...</div>
   </div>
 
   <script>
+    function escribir(txt) {
+      const l = document.getElementById("log");
+      l.innerHTML += "• " + txt + "<br>";
+      l.scrollTop = l.scrollHeight;
+    }
+
     const params = new URLSearchParams(window.location.search);
     const canal = params.get("canal");
     const miUid = parseInt(params.get("uid")) || Math.floor(Math.random() * 8000) + 1000;
@@ -55,68 +72,70 @@
     const urlGenerador = "https://llamadas-voip.vercel.app/api/token";
 
     const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
-    let localAudioTrack;
-    let remoteAudioTracks = [];
+    let microfonoLocal = null;
+    let audioRemoto = null;
+
+    // 1. Escuchar usuarios remotos ANTES de unirse
+    client.on("user-published", async (user, mediaType) => {
+      escribir("Usuario detectado en canal: " + user.uid);
+      await client.subscribe(user, mediaType);
+      if (mediaType === "audio") {
+        audioRemoto = user.audioTrack;
+        escribir("Audio remoto suscrito. Reproduciendo...");
+        reproducirRemoto();
+      }
+    });
+
+    client.on("user-unpublished", (user) => {
+      escribir("Usuario desconectado: " + user.uid);
+    });
+
+    function reproducirRemoto() {
+      if (audioRemoto) {
+        audioRemoto.play();
+        audioRemoto.setVolume(100);
+        document.getElementById("titulo").innerText = "¡En llamada activa!";
+      }
+    }
 
     async function iniciar() {
       if (!canal) {
-        document.getElementById("estado").innerText = "Falta el número de canal";
+        escribir("Error: No hay canal en la URL");
         return;
       }
-
       try {
-        // 1. Obtener token firmado para el UID exacto
-        document.getElementById("estado").innerText = "Conectando al canal...";
+        escribir("Obteniendo token para UID: " + miUid);
         const resp = await fetch(`${urlGenerador}?canal=${canal}&uid=${miUid}`);
         const data = await resp.json();
 
-        // 2. Unirse al canal con ese UID
+        escribir("Uniendo al canal " + canal + "...");
         await client.join(appId, canal, data.token, miUid);
-        document.getElementById("estado").innerText = "Conectado. Toca el botón verde.";
+        escribir("Conectado exitosamente.");
 
-        // 3. Crear y publicar el micrófono
-        localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({
+        // Capturar micrófono local
+        escribir("Activando micrófono local...");
+        microfonoLocal = await AgoraRTC.createMicrophoneAudioTrack({
           AEC: true,
           AGC: true,
           ANS: true
         });
-        await client.publish([localAudioTrack]);
 
-        // 4. Recibir el audio del otro usuario
-        client.on("user-published", async (user, mediaType) => {
-          await client.subscribe(user, mediaType);
-          if (mediaType === "audio") {
-            remoteAudioTracks.push(user.audioTrack);
-            reproducirAudioRemoto(user.audioTrack);
-          }
-        });
+        // Publicar micrófono al canal
+        await client.publish([microfonoLocal]);
+        escribir("Micrófono transmitiendo ✔");
+        document.getElementById("titulo").innerText = "Micrófono listo";
       } catch (err) {
-        document.getElementById("estado").innerText = "Error: " + err.message;
+        escribir("Error: " + err.message);
       }
     }
 
-    function reproducirAudioRemoto(track) {
-      try {
-        track.play();
-        track.setVolume(100);
-        document.getElementById("estado").innerText = "¡En llamada activa!";
-      } catch (e) {
-        document.getElementById("estado").innerText = "Pulsa el botón verde para escuchar";
-      }
-    }
-
-    function desbloquearSonido() {
-      // Desbloquea la política de audio del navegador
+    function activarTodo() {
       AgoraRTC.resumeAudio();
-      remoteAudioTracks.forEach(track => {
-        try {
-          track.play();
-          track.setVolume(100);
-        } catch(e) {}
-      });
-      document.getElementById("btn-desbloqueo").style.background = "#555";
-      document.getElementById("btn-desbloqueo").innerText = "Audio Activado ✔";
-      document.getElementById("estado").innerText = "¡En llamada activa!";
+      if (microfonoLocal) {
+        microfonoLocal.setEnabled(true);
+      }
+      reproducirRemoto();
+      escribir("Audio reanudado manualmente.");
     }
 
     iniciar();
