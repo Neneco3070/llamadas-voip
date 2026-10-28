@@ -5,62 +5,82 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Llamada VoIP</title>
   <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.0.js"></script>
+  <style>
+    body { background: #000; color: #fff; font-family: sans-serif; text-align: center; padding: 25px; }
+    #btn-hablar {
+      display: none;
+      background: #28a745;
+      color: white;
+      border: none;
+      padding: 15px 30px;
+      font-size: 18px;
+      border-radius: 8px;
+      margin-top: 20px;
+    }
+  </style>
 </head>
-<body style="background:#000; color:#fff; font-family:sans-serif; text-align:center; padding:15px;">
-  <p id="estado">Obteniendo credenciales...</p>
+<body>
+  <h3 id="estado">Iniciando llamada...</h3>
+  <button id="btn-hablar" onclick="activarAudioManual()">Toca aquí para Activar Audio</button>
 
   <script>
     const params = new URLSearchParams(window.location.search);
     const canal = params.get("canal");
-    const appId = "81df5645a3e8486481ddd64dac89f2fe"; // Tu App ID
+    // Si viene uid en la URL lo usa, sino genera uno aleatorio
+    const miUid = parseInt(params.get("uid")) || Math.floor(Math.random() * 8000) + 1000;
+    const appId = "81df5645a3e8486481ddd64dac89f2fe";
     const urlGenerador = "https://llamadas-voip.vercel.app/api/token";
 
     const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
     let localAudioTrack;
 
-    async function conectarLlamada() {
+    async function conectar() {
       if (!canal) {
         document.getElementById("estado").innerText = "Falta el número de canal";
         return;
       }
 
       try {
-        // 1. Obtener token automático desde Vercel
-        document.getElementById("estado").innerText = "Conectando al servidor...";
+        document.getElementById("estado").innerText = "Obteniendo conexión...";
         const resp = await fetch(`${urlGenerador}?canal=${canal}`);
         const data = await resp.json();
 
-        if (!data.token) {
-          throw new Error("No se pudo obtener el token de llamada");
-        }
+        // 1. Unirse con su propio UID único
+        await client.join(appId, canal, data.token, miUid);
+        document.getElementById("estado").innerText = "En llamada (Canal " + canal + ")";
 
-        // 2. Conectar al canal con el token generado
-        await client.join(appId, canal, data.token, null);
-        document.getElementById("estado").innerText = "Conectado al canal: " + canal;
-
-        // 3. Captura con ganancia automática alta y cancelación de ruido
+        // 2. Publicar micrófono
         localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({
-          AEC: true, // Cancelación de eco
-          AGC: true, // Control automático de ganancia (aumenta micrófono)
-          ANS: true  // Supresión de ruido
+          AEC: true,
+          AGC: true,
+          ANS: true
         });
         await client.publish([localAudioTrack]);
 
-        // 4. Reproducción entrante fijada al 100% de volumen
+        // 3. Suscribirse al audio del otro usuario
         client.on("user-published", async (user, mediaType) => {
           await client.subscribe(user, mediaType);
           if (mediaType === "audio") {
-            user.audioTrack.play();
-            user.audioTrack.setVolume(100);
-            document.getElementById("estado").innerText = "¡En llamada activa!";
+            try {
+              user.audioTrack.play();
+              user.audioTrack.setVolume(100);
+            } catch (err) {
+              // Si el navegador bloqueó la reproducción automática
+              document.getElementById("btn-hablar").style.display = "inline-block";
+            }
           }
         });
-      } catch (error) {
-        document.getElementById("estado").innerText = "Error: " + error.message;
+      } catch (e) {
+        document.getElementById("estado").innerText = "Error: " + e.message;
       }
     }
 
-    conectarLlamada();
+    function activarAudioManual() {
+      AgoraRTC.resumeAudio();
+      document.getElementById("btn-hablar").style.display = "none";
+    }
+
+    conectar();
   </script>
 </body>
 </html>
